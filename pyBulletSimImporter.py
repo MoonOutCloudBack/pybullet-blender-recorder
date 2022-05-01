@@ -59,10 +59,11 @@ class ANIM_OT_import_pybullet_sim(Operator, ImportHelper):
                     pybullet_obj = data[obj_key]
                     # Load mesh of each link
                     assert pybullet_obj['type'] == 'mesh'
-                    extension = pybullet_obj['mesh_path'].split(
-                        ".")[-1].lower()
+                    extension = pybullet_obj['mesh_path'].split(".")[-1].lower()
                     # Handle different mesh formats
-                    if 'obj' in extension:
+                    if pybullet_obj['mesh_path'] == 'CUBECUBECUBE':
+                        bpy.ops.mesh.primitive_cube_add(size=1.0)
+                    elif 'obj' in extension:
                         bpy.ops.import_scene.obj(
                             filepath=pybullet_obj['mesh_path'],
                             axis_forward='Y', axis_up='Z')
@@ -106,9 +107,19 @@ class ANIM_OT_import_pybullet_sim(Operator, ImportHelper):
                     blender_obj = context.view_layer.objects.active
                     blender_obj.name = obj_key
 
+                    # Add color
+                    if pybullet_obj['color'][0] != -1:
+                        material = bpy.data.materials.new("temp_material")
+                        material.blend_method = 'BLEND' if pybullet_obj['color'][3] != 1 else 'OPAQUE'
+                        material.diffuse_color = pybullet_obj['color']
+                        mesh = blender_obj.data
+                        if len(mesh.materials) == 0:
+                            mesh.materials.append(material)
+                        else:
+                            mesh.materials[0] = material
+
                     # Keyframe motion of imported object
-                    for frame_count, frame_data in enumerate(
-                            pybullet_obj['frames']):
+                    for frame_count, frame_data in enumerate(pybullet_obj['frames']):
                         if frame_count % self.skip_frames != 0:
                             continue
                         if self.max_frames > 1 and frame_count > self.max_frames:
@@ -135,6 +146,7 @@ class ANIM_OT_import_pybullet_sim(Operator, ImportHelper):
                             type='Rotation')
                         bpy.ops.anim.keyframe_insert_menu(
                             type='Location')
+        
         return {'FINISHED'}
 
 

@@ -11,22 +11,17 @@ import numpy as np
 
 class PyBulletRecorder:
     class LinkTracker:
-        def __init__(self,
-                     name,
-                     body_id,
-                     link_id,
-                     link_origin,
-                     mesh_path,
-                     mesh_scale):
+        def __init__(self, name, body_id, link_id, link_origin,
+                     mesh_path, mesh_scale, color=(-1,-1,-1,-1)):
             self.body_id = body_id
             self.link_id = link_id
             self.mesh_path = mesh_path
             self.mesh_scale = mesh_scale
+            self.color = color
             decomposed_origin = decompose(link_origin)
             orn = mat2quat(decomposed_origin[1])
             orn = [orn[1], orn[2], orn[3], orn[0]]
-            self.link_pose = [decomposed_origin[0],
-                              orn]
+            self.link_pose = [decomposed_origin[0], orn]
             self.name = name
 
         def transform(self, position, orientation):
@@ -42,12 +37,10 @@ class PyBulletRecorder:
                 position, orientation = self.transform(
                     position=position, orientation=orientation)
             else:
-                link_state = p.getLinkState(self.body_id,
-                                            self.link_id,
+                link_state = p.getLinkState(self.body_id, self.link_id,
                                             computeForwardKinematics=True)
                 position, orientation = self.transform(
-                    position=link_state[4],
-                    orientation=link_state[5])
+                    position=link_state[4], orientation=link_state[5])
             return {
                 'position': list(position),
                 'orientation': list(orientation)
@@ -57,7 +50,32 @@ class PyBulletRecorder:
         self.states = []
         self.links = []
 
-    def register_object(self, body_id, urdf_path, global_scaling=1):
+    def register_cube(self, body_id, name:str, size:float, cube_dims, color):
+        # return
+        self.links.append(
+            PyBulletRecorder.LinkTracker(
+                name=name,
+                body_id=body_id,
+                link_id=-1,
+                link_origin=np.identity(4),
+                mesh_path='CUBECUBECUBE',
+                mesh_scale=[2 * size * cube_dims['x'], 
+                            2 * size * cube_dims['y'], 
+                            2 * size * cube_dims['z']],
+                color=tuple(color)))
+
+    def register_obj(self, body_id, obj_path, name:str, mesh_scale:list, color=(-1,-1,-1,-1)):
+        self.links.append(
+            PyBulletRecorder.LinkTracker(
+                name=name,
+                body_id=body_id,
+                link_id=-1,
+                link_origin=np.identity(4),
+                mesh_path=obj_path,
+                mesh_scale=mesh_scale,
+                color=tuple(color)))
+
+    def register_urdf(self, body_id, urdf_path, global_scaling=1):
         link_id_map = dict()
         n = p.getNumJoints(body_id)
         link_id_map[p.getBodyInfo(body_id)[0].decode('gb2312')] = -1
@@ -86,11 +104,11 @@ class PyBulletRecorder:
                             # inertial_origin @ visual_origin,
                             # so need to undo that transform
                             (np.linalg.inv(link.inertial.origin)
-                             if link_id == -1
-                             else np.identity(4)) @
-                            link_visual.origin * global_scaling,
+                                    if link_id == -1
+                                    else np.identity(4)) @
+                                link_visual.origin * global_scaling,
                             mesh_path=dir_path + '/' +
-                            link_visual.geometry.mesh.filename,
+                                link_visual.geometry.mesh.filename,
                             mesh_scale=mesh_scale))
 
     def add_keyframe(self):
@@ -98,7 +116,8 @@ class PyBulletRecorder:
         current_state = {}
         for link in self.links:
             current_state[link.name] = link.get_keyframe()
-        self.states.append(current_state)
+        for _ in range(10):
+            self.states.append(current_state)
 
     def prompt_save(self):
         layout = [[sg.Text('Do you want to save previous episode?')],
@@ -133,7 +152,13 @@ class PyBulletRecorder:
                 'type': 'mesh',
                 'mesh_path': link.mesh_path,
                 'mesh_scale': link.mesh_scale,
-                'frames': [state[link.name] for state in self.states]
+                'color': link.color,
+                'frames': [
+                    state[link.name] if link.name in state.keys() else {
+                        'position': [0, 0, -999],
+                        'orientation': [1, 0, 0, 0],
+                    }
+                    for state in self.states]
             }
         return retval
 
